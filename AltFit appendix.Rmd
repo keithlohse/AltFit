@@ -1,0 +1,216 @@
+---
+title: "The Effects of Altitude and Baseline Fitness on VO2max"
+author: "Keith Lohse"
+date: "Wednesday, September 24, 2014"
+output: word_document
+---
+##Constructing the basic random-effects model.
+
+First, you need to make sure that the "metafor" package is installed and make sure to have the "AltFit.txt" file saved in your working directory.
+```{r}
+library(metafor)
+if(!file.exists("./data")){dir.create("./data")}
+fileURL<-"https://raw.github.com/keithlohse/AltFit/master/AltFit.txt"
+download.file(fileURL, destfile="./data/AltFit.txt", method="curl")
+FULLDATA<-read.table("./data/AltFit.txt", header = TRUE, sep="\t")  
+head(FULLDATA, 2) #Take a look at the data to make sure you know how variables are labelled.
+```
+
+Once the data are imported, we want to create our basic random-effects (RE) model. The standard RE model provides you with a summary effect size and measures of heterogeneity. Because we are ultimately interested in building on this model using meta-regression, the first RE model can be thought of as an "intercept only model". That is, we are estimating the average drop in VO2 Max regardless of baseline fitness or altitude.
+
+```{r}
+Model1<-rma(G,Vg_Corr,data=FULLDATA)
+Model1
+confint(Model1)
+```
+
+We can see the result is statistically significant, but not necessarily meaningful, it just tells us that the average drop is not 0. The most important thing this does give us is the tau-squared value for the intercept only model. 
+
+Tau tells us the variance between effect sizes without controlling for altitude or baseline VO2. (This tau-squared value will be used as the "baseline" variance in our subsequent analyses)
+
+To visualize the data at this stage, we can create some of the basic forest plots and funnel plots you might normally see in a meta-analysis. Be warned, however, that the forest plot will be very, very busy as there are nearly 100 independent groups of subjects in this analysis. Also that the funnel plot will be very skewed. In this case, funnel plot skew is not the result of publication bias, but the result of a physiological ceiling (i.e., taking someone to altitude will never make their VO2max higher).
+
+```{r}
+#Creating a forest plot to show the RE model of all of the data
+forest(Model1, cex=1.5)
+
+#Creating a funnel plot to show potential bias in the full dataset
+funnel(Model1)
+
+#Statistical test of symmetry
+regtest(Model1, model = "lm")
+#This test just tells us that the effect sizes are negatively skewed, but that is okay.
+#Given the physiological limits, we only expect to see negative changes.
+```
+
+
+##Explaining heterogeneity with meta-analytic regressions.
+Prior to calculating our meta-regression, we want to visual the relationships between our predictors and our outcomes. Code for generating figures and coducting correlation analyses is provided below:
+```{r}
+#Plotting the data prior to analysis
+plot(G~HighAlt, data = FULLDATA, cex.lab=1.2)
+cor.test(FULLDATA$G,FULLDATA$HighAlt)
+
+#same plot in Km
+plot(G~Altitude, data = FULLDATA, cex.lab=1.2)
+cor.test(FULLDATA$G,FULLDATA$Altitude)
+
+#effect size as a function of baseline vo2
+plot(G~BVO2, data = FULLDATA, cex.lab=1.2)
+cor.test(FULLDATA$G,FULLDATA$BVO2)
+
+#Relationship (none) between altitude and baseline vo2
+plot(Altitude~BVO2, data = FULLDATA, cex.lab=1.2)
+line<-lm(FULLDATA$Altitude~FULLDATA$BVO2)
+abline(line)
+cor.test(FULLDATA$Altitude,FULLDATA$BVO2)
+```
+One of the issues with these data was that the fittest subjects (those with VO2max > 75) were never taken to high altitude. This made the altitude~base line fitness relationship appear negative. We can re-run that correlation after removing the fittest individuals. We can see then that the negative correlation is probably the result of no trials taking elite athletes to very high altitudes.
+```{r}
+#Recreating the same test removing the fittest subjects
+lessfit<-subset(FULLDATA, BVO2< 70)
+plot(Altitude~BVO2, data = lessfit, cex.lab=1.2)
+line<-lm(lessfit$Altitude~lessfit$BVO2)
+abline(line)
+cor.test(lessfit$Altitude,lessfit$BVO2)
+```
+
+We can also create a table or a bar plot to show the different modalities that were used across the various experiments:
+```{r}
+#Creating a barplot of the different testing modalities.
+table(FULLDATA$Mode)
+barplot(table(FULLDATA$Mode), ylim=c(0,80))
+```
+
+Prior to running our meta-regressions, we still want to get some descriptive statistics (means and standard deviations) for all of our predictors. Knowing these values is an important first step in understanding our data. We want to be careful in interpreting regression output that we do not generalize beyond our data. Thus, we do not want to predict the drop in VO2max for a person with a baseline VO2 of 85 mL/kg/ min if the highest VO2max in our database is 65 mL/kg/min!
+```{r}
+##Obtaining descriptive statistics:
+#The average baseline VO2
+mean(FULLDATA$BVO2)
+#The standard deviation of baseline VO2
+sd(FULLDATA$BVO2)
+
+#The average TEST altitude
+mean(FULLDATA$Altitude)
+#The standard deviation of TEST
+sd(FULLDATA$Altitude)
+
+#The average BASELINE altitude
+mean(as.numeric(FULLDATA$LowAlt), na.rm=TRUE)
+#The standard deviation of BASELINE altitude
+sd(as.numeric(FULLDATA$LowAlt), na.rm=TRUE)
+
+#The average pooled standard deviation
+##THIS IS IMPORTANT FOR TRANSFORMING EFFECT SIZES BACK INTO VO2 UNITS LATER ON!
+mean(FULLDATA$Swithin)
+```
+
+##META REGRESSION MODELS##
+###Using Centered Predictors.
+For analyses, we want to use predictors in which values of zero are meaningful (this greatly simplifies the interpretation of the outputs). For altitude, a value of zero is meaningful because that would represent a test that took place at sea-level. For baseline fitness, however, a value of zero is not meaningful because that is not a possible VO2max for a research participant to have. Thus, we center baseline fitness around the average baseline VO2max. As a result, in the centered variable a value of zero represents the average level of fitness, positive values are fitter participants, and negative values are less fit participants.
+
+```{r}
+##Creating a centered predictor of BVO2
+##The centered predictor is useful for the statistical models.
+mean(FULLDATA$BVO2)
+FULLDATA$BVO2C<-FULLDATA$BVO2-mean(FULLDATA$BVO2)
+FULLDATA$BVO2C
+##The mean of the "centered" variable is zero. Thus, positive scores are people above
+#the mean and negative scores are people below the mean.
+mean(FULLDATA$BVO2C)
+```
+We are also interested in nonlinear effects of both altitude and baseline fitness. Thus, we created the quadratic predictors of baseline fitness^2 and altitude^2 to be inlcluded in our analyses:
+```{r}
+##We also want nonlinear versions of
+#CENTERED baseline VO2
+FULLDATA$BVO2C_SQ<-FULLDATA$BVO2C*FULLDATA$BVO2C
+
+#Non-centered baseline VO2
+FULLDATA$BVO2_SQ<-FULLDATA$BVO2*FULLDATA$BVO2
+
+#and Altitude
+FULLDATA$AltSq<-FULLDATA$Altitude^2
+##We do not need to create a centered version of the altitude variable because an altitude of 0 is already a meaningful value (i.e., sea-level), whereas a raw Baseline VO2 Max of 0 is not a meaningful value (i.e., that person would be dead).
+```
+After creating the centered and the nonlinear predictor variables, we are finally ready to enter them into our statistical models. Code for creating each of these models is provided below. Starting with the simplest and moving up to the most complex.
+```{r}
+##Model2
+#Simple effect of Altitude (in km)
+Model2<-rma(G, Vg_Corr, mods=~Altitude,data=FULLDATA, method="REML")
+Model2
+qqnorm(Model2, main="Mixed-Effects Model")
+
+##Model5: Using the centered baseline VO2 Max values
+#Main effects of both BVO2C and Altitude
+Model5<-rma(G, Vg_Corr, mods=~Altitude+BVO2C,data=FULLDATA, method="REML")
+Model5
+qqnorm(Model5, main="Mixed-Effects Model")
+
+###Using the Centered predictor of BVO2 (BVO2C)
+##Model7
+#Adding the interaction of BVO2C and Altitude
+Model7<-rma(G, Vg_Corr, mods=~Altitude*BVO2C,data=FULLDATA, method="REML")
+Model7
+qqnorm(Model7, main="Mixed-Effects Model")
+
+#Adding the interaction of BVO2C and AltSq
+Model9<-rma(G, Vg_Corr, mods=~Altitude*BVO2C+AltSq,data=FULLDATA, method="REML")
+Model9
+qqnorm(Model9, main="Mixed-Effects Model")
+
+#Adding the interaction of BVO2C and AltSq
+Model10<-rma(G, Vg_Corr, mods=~Altitude*BVO2C+AltSq+BVO2C_SQ,data=FULLDATA, method="REML")
+Model10
+qqnorm(Model10, main="Mixed-Effects Model")
+
+```
+
+Finally, we are often interested in generating figures that reflect the weight of different studies in our meta-analysis (more precise studies 'count' more in the analysis). Sample code for plotting datapoints with a size corresponding to the weight is provided below. This code can then be applied to a variety of different plots:
+```{r}
+##Creating weighted figures
+wi<-1/sqrt(FULLDATA$Vg_Corr)
+size<-0.5+3*(wi-min(wi))/(max(wi)-min(wi))
+plot(FULLDATA$Altitude,FULLDATA$ES, pch=1, cex=size, lwd=2, ylim=c(-40,10))
+head(FULLDATA)
+```
+
+###Using Non-Centered Predictors.
+While the centered predictor is useful for analysis, the non-centered predictor can be very useful for creating graphs and figures. The models are reproduced below, only we call on the non-centered predictor. This will change the regression coefficients.
+```{r}
+##Model2
+#Simple effect of Altitude (in km)
+Model2<-rma(G, Vg_Corr, mods=~Altitude,data=FULLDATA, method="REML")
+Model2
+qqnorm(Model2, main="Mixed-Effects Model")
+
+##Model3
+#Simple effect of Baseline VO2 Max (BVO2)
+Model3<-rma(G, Vg_Corr, mods=~BVO2,data=FULLDATA, method="REML")
+Model3
+qqnorm(Model2, main="Mixed-Effects Model")
+
+##Model4
+#Main effects of both BVO2 and Altitude
+Model4<-rma(G, Vg_Corr, mods=~Altitude+BVO2,data=FULLDATA, method="REML")
+Model4
+qqnorm(Model2, main="Mixed-Effects Model")
+
+
+##Model6
+#Adding the interaction of BVO2 and Altitude
+Model6<-rma(G, Vg_Corr, mods=~Altitude*BVO2,data=FULLDATA, method="REML")
+Model6
+qqnorm(Model6, main="Mixed-Effects Model")
+
+
+#Adding the interaction of BVO2 and AltSq
+Model8<-rma(G, Vg_Corr, mods=~Altitude*BVO2+AltSq,data=FULLDATA, method="REML")
+Model8
+qqnorm(Model8, main="Mixed-Effects Model")
+
+
+#Adding the interaction of BVO2 and AltSq
+Model11<-rma(G, Vg_Corr, mods=~Altitude*BVO2+AltSq+BVO2_SQ,data=FULLDATA, method="REML")
+Model11
+qqnorm(Model11, main="Mixed-Effects Model")
+```
