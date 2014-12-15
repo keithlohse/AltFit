@@ -8,12 +8,12 @@ output: word_document
 
 First, you need to make sure that the "metafor" package is installed and make sure to have the "AltFit.txt" file saved in your working directory.
 ```{r}
-library(metafor)
+library(metafor);library(RCurl)
 if(!file.exists("./data")){dir.create("./data")}
 fileURL<-"https://raw.github.com/keithlohse/AltFit/master/AltFit.txt"
 download.file(fileURL, destfile="./data/AltFit.txt", method="curl")
-FULLDATA<-read.table("./data/AltFit.txt", header = TRUE, sep="\t")  
-head(FULLDATA, 2) #Take a look at the data to make sure you know how variables are labelled.
+FULLDATA<-read.table("./data/AltFit.txt", header = TRUE, sep="\t") 
+tail(FULLDATA)
 ```
 
 Once the data are imported, we want to create our basic random-effects (RE) model. The standard RE model provides you with a summary effect size and measures of heterogeneity. Because we are ultimately interested in building on this model using meta-regression, the first RE model can be thought of as an "intercept only model". That is, we are estimating the average drop in VO2 Max regardless of baseline fitness or altitude.
