@@ -1,16 +1,16 @@
 ---
 title: "The Effects of Altitude and Baseline Fitness on VO2max"
 author: "Keith Lohse"
-date: "Wednesday, September 24, 2014"
+date: "Monday, December 15th, 2014"
 output: word_document
 ---
 ##Constructing the basic random-effects model.
 
 First, you need to make sure that the "metafor" package is installed and make sure to have the "AltFit.txt" file saved in your working directory.
 ```{r}
-library(metafor);library(RCurl)
+library(metafor);library(plyr);library(dplyr);library(tidyr);library(ggplot2);library(RCurl)
 if(!file.exists("./data")){dir.create("./data")}
-fileURL<-"https://raw.github.com/keithlohse/AltFit/master/AltFit.txt"
+fileURL<-"https://raw.github.com/keithlohse/AltFit/master/AltFit Dec 15.txt"
 download.file(fileURL, destfile="./data/AltFit.txt", method="curl")
 FULLDATA<-read.table("./data/AltFit.txt", header = TRUE, sep="\t") 
 tail(FULLDATA)
@@ -28,7 +28,7 @@ We can see the result is statistically significant, but not necessarily meaningf
 
 Tau tells us the variance between effect sizes without controlling for altitude or baseline VO2. (This tau-squared value will be used as the "baseline" variance in our subsequent analyses)
 
-To visualize the data at this stage, we can create some of the basic forest plots and funnel plots you might normally see in a meta-analysis. Be warned, however, that the forest plot will be very, very busy as there are nearly 100 independent groups of subjects in this analysis. Also that the funnel plot will be very skewed. In this case, funnel plot skew is not the result of publication bias, but the result of a physiological ceiling (i.e., taking someone to altitude will never make their VO2max higher).
+To visualize the data at this stage, we can create some of the basic forest plots and funnel plots you might normally see in a meta-analysis. Be warned, however, that the forest plot will be very, very busy as there are 105 independent groups of subjects in this analysis. Also that the funnel plot will be very skewed. In this case, funnel plot skew is not the result of publication bias, but the result of a physiological ceiling (i.e., taking someone to altitude will never make their VO2max higher).
 
 ```{r}
 #Creating a forest plot to show the RE model of all of the data
@@ -212,5 +212,42 @@ qqnorm(Model8, main="Mixed-Effects Model")
 #Adding the interaction of BVO2 and AltSq
 Model11<-rma(G, Vg_Corr, mods=~Altitude*BVO2+AltSq+BVO2_SQ,data=FULLDATA, method="REML")
 Model11
+qqnorm(Model11, main="Mixed-Effects Model")
+```
+
+##Exploring Hypobaric versus Normobaric Tests
+There is an important question in altitude research about whether or not normobaric testing will yield results similar to normobaric testing for the VO2max assessment. In order to address this question, we have create a variable called "Hypobaric" in which hypobaric tests are coded as "1" and normobaric tests are coded as "0". For our regressions, we will recode these values as hypobaric = 0.5 and normobaric = -0.5. (Again, this centering is done to facilitate the interpretation of the analysis.)
+```{r}
+FULLDATA$Hypobaric<-FULLDATA$Hypobaric-0.5
+summary(as.factor(FULLDATA$Hypobaric))
+
+#Next we can plot some descriptive information about testing conditions and effect size.
+boxplot(G~Hypobaric, data = FULLDATA, cex.lab=1.2, ylab="Effect Size (g)", 
+        xlab="-0.5 = normobaric, 0.5 = hypobaric")
+
+#We can get more detailed descriptive data using the code below.
+ddply(FULLDATA,~Hypobaric,summarise, gM = mean(G),gSD=sd(G),n=length(G),baseM = mean(BVO2),
+      baseSD = sd(BVO2), altM=mean(Altitude), altSD=sd(Altitude))
+```
+
+These data suggest there is no difference in VO2max between normobaric and hypobaric tests. The average effect-size for normobaric was slightly more negative than hypobaric, but the difference was not significant. Furthermore, this effect might be partially driven by the higher test altitudes used in normobaric studies. Indeed, as we will see below, the coefficient for Hypobaric, beta = 0.25, gets a lot smaller when we control for altitude in the model, beta = -0.05. Thus, the current data suggest that normobaric and hypobaric yield very similar results.
+```{r}
+##Effects of Testing under Normobaric or Hypobaric Conditions
+#Simple effect of Altitude (in km)
+Hyp1<-rma(G, Vg_Corr, mods=~Hypobaric,data=FULLDATA, method="REML")
+Hyp1
+qqnorm(Model1, main="Mixed-Effects Model")
+
+Hyp2<-rma(G, Vg_Corr, mods=~Hypobaric+Altitude,data=FULLDATA, method="REML")
+Hyp2
+qqnorm(Model1, main="Mixed-Effects Model")
+
+Hyp3<-rma(G, Vg_Corr, mods=~Hypobaric+BVO2C,data=FULLDATA, method="REML")
+Hyp3
+qqnorm(Model1, main="Mixed-Effects Model")
+
+#Adding the interaction of BVO2C and AltSq
+Hyp4<-rma(G, Vg_Corr, mods=~Altitude*BVO2+AltSq+BVO2_SQ+Hypobaric,data=FULLDATA, method="REML")
+Hyp4
 qqnorm(Model11, main="Mixed-Effects Model")
 ```
